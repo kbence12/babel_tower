@@ -1,138 +1,185 @@
-"""babel-tower: run the whole EPUB -> aligned pairs pipeline in one go.
+"""babel-tower: align an English book with its Hungarian translation, sentence by sentence.
 
-    uv run babel-tower run en.epub hu.epub data/runs/book/ --skip-cost 0.6
+    babel-tower run en.epub hu.epub data/runs/book/ --skip-cost 0.6
 
-Writes every intermediate file to the output directory, plus run.json recording the inputs
-(with checksums), settings, code version, library versions, device and timings, so a result
-can be traced back to exactly how it was made.
+`run` chains every step and writes all intermediate files plus run.json (input checksums,
+settings, code commit, library versions, device, timings, summary stats) to one directory.
+The steps can also be run one at a time: extract, split, align. sample and compare are for
+looking at the output.
 """
+
 import argparse
-import hashlib
 import json
-import platform
-import subprocess
 import sys
 import time
-from datetime import datetime, timezone
-from importlib.metadata import PackageNotFoundError, version
+from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
-from babel_tower import align, extract_epub, splitter
-
-PIPELINE_FILES = {
-    "paragraphs": "{lang}.paragraphs.jsonl",
-    "sentences": "{lang}.sentences.jsonl",
-}
-
-
-def sha256(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+from babel_tower import jsonl, provenance, report, review
+from babel_tower.align import MAX_GROUP, AlignConfig, Alignment, align
+from babel_tower.embed import DEFAULT_MODEL, Embedder
+from babel_tower.epub import LfsPointerError, extract_paragraphs
+from babel_tower.records import LANGS, Lang, Pair, Paragraph, Sentence
+from babel_tower.splitter import split_paragraphs
 
 
-def git_info():
-    root = Path(__file__).resolve().parent
+def main(argv: list[str] | None = None) -> None:
+    args = _parser().parse_args(argv)
     try:
-        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
-        dirty = bool(subprocess.check_output(
-            ["git", "status", "--porcelain", "--", "."], cwd=root.parent.parent, text=True).strip())
-        return {"commit": commit, "dirty": dirty}
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
+        args.command(args)
+    except LfsPointerError as e:
+        sys.exit(f"error: {e}")
 
 
-def env_info(device):
-    def ver(pkg):
-        try:
-            return version(pkg)
-        except PackageNotFoundError:
-            return None
-
-    info = {"python": platform.python_version(), "platform": platform.platform(),
-            "packages": {p: ver(p) for p in ("babel-tower", "torch", "sentence-transformers",
-                                             "transformers", "numpy", "ebooklib")}}
-    try:
-        import torch
-
-        info["torch_cuda"] = torch.version.cuda
-        if device == "cuda":
-            info["gpu"] = torch.cuda.get_device_name(0)
-    except ImportError:
-        pass
-    return info
+def cmd_extract(args: argparse.Namespace) -> None:
+    rows = extract_paragraphs(args.epub)
+    jsonl.write(args.out, rows)
+    report.paragraphs(rows)
 
 
-def cmd_run(a):
-    out = a.out
-    out.mkdir(parents=True, exist_ok=True)
-    timings = {}
-    sentences = {}
-    for lang, path in (("en", a.en), ("hu", a.hu)):
-        print(f"=== {lang}: extract {path}")
+def cmd_split(args: argparse.Namespace) -> None:
+    rows = split_paragraphs(jsonl.read(args.paragraphs, Paragraph), args.lang)
+    jsonl.write(args.out, rows)
+    report.sentences(rows, verbose=True)
+
+
+def cmd_align(args: argparse.Namespace) -> None:
+    result = align(
+        jsonl.read(args.en, Sentence), jsonl.read(args.hu, Sentence), _config(args), _embedder(args), args.cache
+    )
+    _write_alignment(args.out, result)
+    report.alignment(result)
+
+
+def cmd_run(args: argparse.Namespace) -> None:
+    out: Path = args.out
+    timings: dict[str, float] = {}
+    books: dict[Lang, list[Sentence]] = {}
+    for lang, epub in zip(LANGS, (args.en, args.hu), strict=True):
+        print(f"=== {lang}: {epub}")
         t = time.perf_counter()
-        paras = extract_epub.extract_paragraphs(path)
-        align.write_jsonl(out / PIPELINE_FILES["paragraphs"].format(lang=lang), paras)
-        extract_epub.report(paras)
+        paragraphs = extract_paragraphs(epub)
+        jsonl.write(out / f"{lang}.paragraphs.jsonl", paragraphs)
         timings[f"extract_{lang}_s"] = round(time.perf_counter() - t, 3)
+        report.paragraphs(paragraphs)
 
-        print(f"=== {lang}: split")
         t = time.perf_counter()
-        sents = splitter.split_rows(paras, lang)
-        align.write_jsonl(out / PIPELINE_FILES["sentences"].format(lang=lang), sents)
-        if a.verbose:
-            splitter.report(sents)
-        else:
-            print(f"segments: {len(sents)}")
+        books[lang] = split_paragraphs(paragraphs, lang)
+        jsonl.write(out / f"{lang}.sentences.jsonl", books[lang])
         timings[f"split_{lang}_s"] = round(time.perf_counter() - t, 3)
-        sentences[lang] = sents
+        report.sentences(books[lang], verbose=args.verbose)
 
     print("=== align")
-    embedder = align.Embedder(a.model, a.device, a.batch_size)
-    pairs, unaligned, N, M, t_align = align.align(
-        sentences["en"], sentences["hu"], a.skip_cost, a.group_penalty, a.keep_verse, a.cache, embedder)
-    timings.update(t_align)
-    pairs_path = out / "pairs.jsonl"
-    align.write_jsonl(pairs_path, pairs)
-    align.write_jsonl(align.unaligned_path(pairs_path), unaligned)
+    config, embedder = _config(args), _embedder(args)
+    result = align(books["en"], books["hu"], config, embedder, args.cache)
+    timings |= {"embed_s": result.embed_s, "dp_s": result.dp_s}
+    _write_alignment(out / "pairs.jsonl", result)
 
-    run = {
-        "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    run: dict[str, Any] = {
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
         "argv": sys.argv[1:],
-        "inputs": {lang: {"path": str(p), "sha256": sha256(p), "bytes": p.stat().st_size}
-                   for lang, p in (("en", a.en), ("hu", a.hu))},
-        "settings": {"skip_cost": a.skip_cost, "group_penalty": a.group_penalty,
-                     "keep_verse": a.keep_verse, "model": a.model, "max_group": align.K},
-        "code": git_info(),
-        "env": env_info(embedder.device),
-        "embedding": {k: round(v, 3) if isinstance(v, float) else v for k, v in embedder.stats.items()},
+        "inputs": {lang: provenance.file_info(p) for lang, p in zip(LANGS, (args.en, args.hu), strict=True)},
+        "settings": {**asdict(config), "model": args.model, "max_group": MAX_GROUP},
+        "code": provenance.code_info(),
+        "env": provenance.env_info(embedder.device),
+        "embedding": {k: round(v, 3) if isinstance(v, float) else v for k, v in asdict(embedder.stats).items()},
         "timings": timings,
-        "stats": align.stats(pairs, unaligned, N, M),
+        "stats": report.alignment_stats(result),
     }
     (out / "run.json").write_text(json.dumps(run, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    align.summarize(pairs, unaligned, N, M)
-    e = run["embedding"]
-    print(f"=== wrote {out}/  (device {e['device']}, embedding cache hits {e['cache_hits']}/"
-          f"{e['cache_hits'] + e['cache_misses']}, encode {e['encode_s']}s, dp {timings['dp_s']}s)")
+    report.alignment(result)
+    s = embedder.stats
+    print(
+        f"=== wrote {out}/  (device {s.device}, embedding cache hits {s.cache_hits}/{s.cache_hits + s.cache_misses}, "
+        f"encode {s.encode_s:.1f}s, dp {result.dp_s}s)"
+    )
 
 
-def main():
-    ap = argparse.ArgumentParser(prog="babel-tower", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("run", help="EPUBs -> paragraphs -> sentences -> aligned pairs")
-    r.add_argument("en", type=Path, help="English EPUB")
-    r.add_argument("hu", type=Path, help="Hungarian EPUB")
-    r.add_argument("out", type=Path, help="output directory")
-    r.add_argument("-v", "--verbose", action="store_true", help="print the full splitter report")
-    align.add_args(r)
-    r.set_defaults(fn=cmd_run)
-    a = ap.parse_args()
-    a.fn(a)
+def cmd_sample(args: argparse.Namespace) -> None:
+    review.sample(jsonl.read(args.pairs, Pair), lo=args.lo, hi=args.hi, group_type=args.type, n=args.n, seed=args.seed)
 
 
-if __name__ == "__main__":
-    main()
+def cmd_compare(args: argparse.Namespace) -> None:
+    review.compare(jsonl.read(args.a, Pair), jsonl.read(args.b, Pair), args.n, args.seed)
+
+
+def _write_alignment(pairs_path: Path, result: Alignment) -> None:
+    jsonl.write(pairs_path, result.pairs)
+    jsonl.write(pairs_path.with_suffix(".unaligned.jsonl"), result.unaligned)
+
+
+def _config(args: argparse.Namespace) -> AlignConfig:
+    return AlignConfig(skip_cost=args.skip_cost, group_penalty=args.group_penalty, keep_verse=args.keep_verse)
+
+
+def _embedder(args: argparse.Namespace) -> Embedder:
+    return Embedder(args.model, args.device, args.batch_size)
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="babel-tower", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    sub = parser.add_subparsers(required=True, metavar="COMMAND")
+
+    def command(name: str, fn: Any, help: str) -> argparse.ArgumentParser:  # noqa: A002
+        p = sub.add_parser(name, help=help, description=help)
+        p.set_defaults(command=fn)
+        return p
+
+    p = command("run", cmd_run, "EPUBs -> paragraphs -> sentences -> aligned pairs, into one directory")
+    p.add_argument("en", type=Path, help="English EPUB")
+    p.add_argument("hu", type=Path, help="Hungarian EPUB")
+    p.add_argument("out", type=Path, help="output directory")
+    p.add_argument("-v", "--verbose", action="store_true", help="print sample sentences in the splitter report")
+    _add_align_options(p)
+
+    p = command("extract", cmd_extract, "EPUB -> paragraphs JSONL")
+    p.add_argument("epub", type=Path)
+    p.add_argument("out", type=Path)
+
+    p = command("split", cmd_split, "paragraphs JSONL -> sentences JSONL")
+    p.add_argument("paragraphs", type=Path)
+    p.add_argument("out", type=Path)
+    p.add_argument("--lang", choices=LANGS, required=True)
+
+    p = command("align", cmd_align, "two sentences JSONL files -> pairs JSONL (+ .unaligned.jsonl)")
+    p.add_argument("en", type=Path, help="English sentences JSONL")
+    p.add_argument("hu", type=Path, help="Hungarian sentences JSONL")
+    p.add_argument("out", type=Path, help="output pairs JSONL")
+    _add_align_options(p)
+
+    p = command("sample", cmd_sample, "show random pairs in a similarity range or of one group type")
+    p.add_argument("pairs", type=Path)
+    p.add_argument("--lo", type=float, default=0.0)
+    p.add_argument("--hi", type=float, default=1.01)
+    p.add_argument("--type", help="group type, e.g. 2-2")
+    p.add_argument("-n", type=int, default=10)
+    p.add_argument("--seed", type=int, default=0)
+
+    p = command("compare", cmd_compare, "show the pairs that differ between two runs")
+    p.add_argument("a", type=Path)
+    p.add_argument("b", type=Path)
+    p.add_argument("-n", type=int, default=8)
+    p.add_argument("--seed", type=int, default=0)
+    return parser
+
+
+def _add_align_options(p: argparse.ArgumentParser) -> None:
+    defaults = AlignConfig()
+    p.add_argument(
+        "--skip-cost", type=float, default=defaults.skip_cost,
+        help="cost per unaligned segment; pairs with cosine below about this are left out (default %(default)s)",
+    )  # fmt: skip
+    p.add_argument(
+        "--group-penalty", type=float, default=defaults.group_penalty,
+        help="extra cost per segment beyond a 1-1 pair; raise if 2-2 / 1-3 groups dominate (default %(default)s)",
+    )  # fmt: skip
+    p.add_argument("--keep-verse", action="store_true", help="align verse blocks too")
+    p.add_argument("--model", default=DEFAULT_MODEL, help="sentence-transformers model (default %(default)s)")
+    p.add_argument("--device", help="cuda, mps or cpu (default: best available)")
+    p.add_argument("--batch-size", type=int, default=64)
+    p.add_argument("--cache", type=Path, default=Path("data/cache"), help="embedding cache directory")

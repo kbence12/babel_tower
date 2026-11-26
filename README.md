@@ -8,10 +8,14 @@ into a parallel corpus of matched sentence groups. Most groups are 1-1 pairs, bu
 
 | Module | Role |
 |---|---|
-| `extract_epub.py` | EPUB → paragraphs in reading order (JSONL) |
+| `epub.py` | EPUB → paragraphs in reading order |
 | `splitter.py` | Paragraphs → sentences, using rules for English and Hungarian (dialogue dashes, abbreviations, initials) |
-| `align.py` | Sentences → aligned groups, using [LaBSE](https://huggingface.co/sentence-transformers/LaBSE) embeddings and a dynamic-programming aligner |
-| `inspect_pairs.py` | Samples pairs by similarity or group type, or diffs two alignment runs |
+| `embed.py` | Embeds windows of consecutive sentences with [LaBSE](https://huggingface.co/sentence-transformers/LaBSE), cached on disk |
+| `align.py` | Sentences → aligned groups, using a dynamic-programming aligner over those embeddings |
+| `records.py` | The `Paragraph` / `Sentence` / `Pair` / `Unaligned` records; each is one JSONL line |
+| `report.py`, `review.py` | Reports for checking each stage by eye; sampling pairs and diffing two runs |
+| `provenance.py` | Input checksums, code commit and environment for `run.json` |
+| `cli.py` | The `babel-tower` command |
 
 The aligner embeds every window of 1–3 consecutive sentences on each side. It then finds the
 cheapest monotonic path through the full alignment grid:
@@ -35,7 +39,8 @@ EPUBs in the `data` submodule are stored in LFS).
 git submodule update --init && (cd data && git lfs install && git lfs pull)
 uv sync
 uv run babel-tower run data/eng/book.epub data/hun/book.epub data/runs/book_skip06 --skip-cost 0.6
-uv run python -m babel_tower.inspect_pairs sample data/runs/book_skip06/pairs.jsonl --lo 0.5 --hi 0.6
+uv run babel-tower sample data/runs/book_skip06/pairs.jsonl --lo 0.5 --hi 0.6
+uv run babel-tower compare data/runs/book_skip06/pairs.jsonl data/runs/book_gp02/pairs.jsonl
 ```
 
 `babel-tower run` writes everything for one run into the output directory:
@@ -50,7 +55,7 @@ uv run python -m babel_tower.inspect_pairs sample data/runs/book_skip06/pairs.js
 
 Embedding uses CUDA, then MPS, then CPU, whichever is available first (override with `--device`). Embeddings are cached in
 `data/cache/`, so reruns with other `--skip-cost` / `--group-penalty` values skip the model entirely.
-Each step can also run on its own, e.g. `uv run python -m babel_tower.splitter --help`.
+Each step can also run on its own: `babel-tower extract`, `split` and `align` (see `babel-tower --help`).
 
 Each output line is one aligned group:
 
@@ -59,3 +64,11 @@ Each output line is one aligned group:
 ```
 
 Sentences left out of every group are written to `pairs.unaligned.jsonl`.
+
+## Development
+
+```sh
+uv run ruff check src      # lint
+uv run ruff format src     # format
+uv run mypy                # type-check (strict)
+```
