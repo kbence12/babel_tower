@@ -188,7 +188,8 @@ def _show_group(g: Group, sides: Sides, indent: str) -> None:
 def bench_result(result: dict[str, Any]) -> None:
     s = result["scores"]
     t = result["timings"]
-    print(f"chrF++ {s['chrf++']:.1f}   BLEU {s['bleu']:.1f}   (translated in {t['translate_s']:.1f}s)")
+    ci = f" ± {s['chrf++_ci95']:.1f}" if s.get("chrf++_ci95") is not None else ""
+    print(f"chrF++ {s['chrf++']:.1f}{ci}   BLEU {s['bleu']:.1f}   (translated in {t['translate_s']:.1f}s)")
     for section, chrf in result.get("by_section", {}).items():
         print(f"  {section:36} chrF++ {chrf:5.1f}")
     rng = random.Random(0)
@@ -199,9 +200,28 @@ def bench_result(result: dict[str, Any]) -> None:
 
 def results_table(rows: Sequence[dict[str, Any]]) -> None:
     rows = sorted(rows, key=lambda r: (r["benchmark"], r["direction"], -r["scores"]["chrf++"]))
-    print(f"{'benchmark':16} {'direction':9} {'model':32} {'chrF++':>7} {'BLEU':>6} {'n':>5}")
+    print(f"{'benchmark':16} {'direction':9} {'model':32} {'chrF++':>7} {'±95%':>5} {'BLEU':>6} {'n':>5}")
     for r in rows:
+        s = r["scores"]
+        ci = f"{s['chrf++_ci95']:5.1f}" if s.get("chrf++_ci95") is not None else "    -"
         print(
             f"{r['benchmark']:16} {r['direction']:9} {r['label']:32} "
-            f"{r['scores']['chrf++']:7.1f} {r['scores']['bleu']:6.1f} {r['sentences']:5d}"
+            f"{s['chrf++']:7.1f} {ci} {s['bleu']:6.1f} {r['sentences']:5d}"
         )
+
+
+def corpus(manifest: dict[str, Any]) -> None:
+    total = sum(s["pairs"] for s in manifest["sources"].values())
+    print(f"sources: {', '.join(manifest['sources'])}  ({total} aligned pairs)")
+    for reason, n in manifest["dropped"].items():
+        print(f"  dropped {n:5d}  {reason}")
+    for split in ("train", "dev"):
+        s = manifest[split]
+        print(
+            f"{split:5} {s['pairs']:6d} pairs   EN {s['en']['words']:7d} words {s['en']['word_types']:6d} types   "
+            f"HU {s['hu']['words']:7d} words {s['hu']['word_types']:6d} types"
+        )
+    if manifest["contaminated"]:
+        heading(f"{len(manifest['contaminated'])} pairs removed because a sentence is also in a benchmark")
+        for c in manifest["contaminated"][:10]:
+            print(f"  {c['source']} pair {c['pair']}: {' | '.join(clip(t, 60) for t in c['sentences'])}")

@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from babel_tower import bench, gold, jsonl, provenance, report, review
+from babel_tower import bench, corpus, gold, jsonl, provenance, report, review
 from babel_tower.align import MAX_GROUP, AlignConfig, Alignment, align
 from babel_tower.embed import DEFAULT_MODEL, Embedder
 from babel_tower.epub import LfsPointerError, extract_paragraphs
@@ -164,6 +164,43 @@ def cmd_bench(args: argparse.Namespace) -> None:
             report.bench_result(result)
 
 
+def cmd_corpus(args: argparse.Namespace) -> None:
+    out: Path = args.out
+    config = corpus.CorpusConfig(args.min_sim, args.max_length_ratio, args.dev_fraction, args.dev_blocks, args.seed)
+    sources = [
+        corpus.Source.of(
+            run.name,
+            jsonl.read(run / "pairs.jsonl", Pair),
+            *(jsonl.read(run / f"{lang}.sentences.jsonl", Sentence) for lang in LANGS),
+        )
+        for run in args.runs
+    ]
+    result = corpus.build(sources, [bench.load(name) for name in args.benchmarks], config)
+    jsonl.write(out / "train.jsonl", result.train)
+    jsonl.write(out / "dev.jsonl", result.dev)
+    manifest = {
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "argv": sys.argv[1:],
+        "config": asdict(config),
+        "sources": {
+            s.name: {"path": str(run), "pairs": len(s.pairs), "run": _read_json(run / "run.json")}
+            for run, s in zip(args.runs, sources, strict=True)
+        },
+        "benchmarks_checked": args.benchmarks,
+        "dropped": dict(result.dropped.most_common()),
+        "train": corpus.stats(result.train),
+        "dev": corpus.stats(result.dev),
+        "contaminated": result.contaminated,
+        "code": provenance.code_info(),
+    }
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    report.corpus(manifest)
+
+
+def _read_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
 def cmd_results(args: argparse.Namespace) -> None:
     rows = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(args.dir.glob("*.json"))]
     report.results_table(rows)
@@ -274,6 +311,20 @@ def _add_bench_commands(command: Command) -> None:
     p.add_argument("--device", help="cuda, mps or cpu (default: best available)")
     p.add_argument("--batch-size", type=int, default=32)
     p.add_argument("--beams", type=int, default=4, help="beam search width (default %(default)s)")
+
+    p = command("corpus", cmd_corpus, "aligned pairs from one or more runs -> train/dev corpus for translation")
+    p.add_argument("out", type=Path, help="corpus directory to write")
+    p.add_argument("runs", type=Path, nargs="+", help="run directories (from `babel-tower run`)")
+    defaults = corpus.CorpusConfig()
+    p.add_argument("--min-sim", type=float, default=defaults.min_sim, help="default %(default)s")
+    p.add_argument("--max-length-ratio", type=float, default=defaults.max_length_ratio, help="default %(default)s")
+    p.add_argument("--dev-fraction", type=float, default=defaults.dev_fraction, help="default %(default)s")
+    p.add_argument("--dev-blocks", type=int, default=defaults.dev_blocks, help="per run (default %(default)s)")
+    p.add_argument("--seed", type=int, default=defaults.seed)
+    p.add_argument(
+        "--benchmarks", nargs="+", choices=bench.BENCHMARKS, default=list(bench.BENCHMARKS),
+        help="benchmarks whose sentences must not appear in the corpus (default: all)",
+    )  # fmt: skip
 
     p = command("results", cmd_results, "table of all benchmark results in a directory")
     p.add_argument("dir", type=Path, nargs="?", default=Path("data/results"))

@@ -163,20 +163,30 @@ class Translator:
         return self._loaded
 
 
+BOOTSTRAP_SAMPLES = 1000
+
+
 @dataclass(frozen=True, slots=True)
 class Scores:
     chrf_pp: float
     bleu: float
     signatures: dict[str, str]
+    chrf_pp_ci: float | None = None  # half-width of the 95% bootstrap confidence interval
 
     @classmethod
-    def of(cls, hypotheses: Sequence[str], references: Sequence[str]) -> Scores:
+    def of(cls, hypotheses: Sequence[str], references: Sequence[str], bootstrap: bool = False) -> Scores:
         chrf, bleu = CHRF(word_order=2), BLEU()
         refs = [list(references)]
+        chrf_pp = chrf.corpus_score(hypotheses, refs).score
+        ci = None
+        if bootstrap and len(hypotheses) > 1:
+            # resample the test set with replacement; how much the score moves says how far to trust it
+            ci = round(float(chrf.corpus_score(hypotheses, refs, n_bootstrap=BOOTSTRAP_SAMPLES)._ci), 2)
         return cls(
-            chrf_pp=round(chrf.corpus_score(hypotheses, refs).score, 2),
+            chrf_pp=round(chrf_pp, 2),
             bleu=round(bleu.corpus_score(hypotheses, refs).score, 2),
             signatures={"chrf++": str(chrf.get_signature()), "bleu": str(bleu.get_signature())},
+            chrf_pp_ci=ci,
         )
 
 
@@ -189,7 +199,7 @@ def evaluate(benchmark: Benchmark, direction: Direction, translator: Translator)
         "benchmark": benchmark.name,
         "direction": direction,
         "sentences": len(sources),
-        "scores": _scores_dict(Scores.of(hypotheses, references)),
+        "scores": _scores_dict(Scores.of(hypotheses, references, bootstrap=True)),
         "translator": translator.settings(),
     }
     if benchmark.sections:
@@ -207,4 +217,4 @@ def evaluate(benchmark: Benchmark, direction: Direction, translator: Translator)
 
 
 def _scores_dict(s: Scores) -> dict[str, Any]:
-    return {"chrf++": s.chrf_pp, "bleu": s.bleu, "signatures": s.signatures}
+    return {"chrf++": s.chrf_pp, "chrf++_ci95": s.chrf_pp_ci, "bleu": s.bleu, "signatures": s.signatures}

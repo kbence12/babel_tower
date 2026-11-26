@@ -88,6 +88,24 @@ It then prints the gold groups that the run got wrong, next to what the run did 
 files refer to sentence ids, so they only fit runs made with the same sentence split: `eval`
 checks the texts, and refuses if they differ.
 
+## Training corpus
+
+`babel-tower corpus` turns the pairs of one or more runs into `train.jsonl` and `dev.jsonl`
+(one `{"en", "hu", "sim", "type", "source", "pair"}` object per line) plus a `manifest.json`:
+
+```sh
+uv run babel-tower corpus data/corpus/v1 data/runs/book_a data/runs/book_b --min-sim 0.5
+```
+
+- **dev** is a few contiguous blocks of each book (5% by default), so dev sentences do not sit
+  next to the train sentences that share their context.
+- **filters**: similarity below `--min-sim` (0.5: below that, pairs are mostly loose or wrong),
+  length ratio above `--max-length-ratio`, no letters, exact duplicates.
+- **benchmark guard**: a pair is dropped if any of its sentences also appears in a benchmark
+  (compared case- and punctuation-insensitively).
+- the manifest records what was dropped and why, word and word-type counts per language, and
+  the `run.json` of every source.
+
 ## Translation benchmarks
 
 The aligned pairs are training data for an English ↔ Hungarian translator. Benchmarks are kept
@@ -105,7 +123,8 @@ uv run babel-tower results                                      # table of every
 
 Scores are chrF++ (the main metric: character n-grams give partial credit for a word with
 the right stem and the wrong suffix, which matters for Hungarian) and BLEU, from sacrebleu.
-Each result in `data/results/` keeps every translation, per-section scores, sacrebleu
+chrF++ comes with a 95% bootstrap confidence interval (the `±95%` column of `results`): two
+models whose intervals overlap are not reliably different. Each result in `data/results/` keeps every translation, per-section scores, sacrebleu
 signatures, generation settings and the code version. Scores are not directly comparable across
 directions, since EN→HU is scored on Hungarian text and HU→EN on English.
 

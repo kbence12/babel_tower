@@ -28,3 +28,11 @@ def test_scores_reward_near_misses_more_under_chrf() -> None:
     assert perfect.chrf_pp == perfect.bleu == 100.0
     assert near.chrf_pp > 75 > near.bleu
     assert "nw:2" in near.signatures["chrf++"]
+
+
+def test_bootstrap_gives_a_json_friendly_interval() -> None:
+    hyps = ["A kutya alszik.", "A macska eszik.", "Jó reggelt!"] * 10
+    refs = ["A kutya alszik.", "A cica eszik.", "Jó estét!"] * 10
+    s = Scores.of(hyps, refs, bootstrap=True)
+    assert type(s.chrf_pp_ci) is float
+    assert 0 < s.chrf_pp_ci < 30
