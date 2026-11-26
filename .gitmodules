@@ -1,0 +1,3 @@
+[submodule "data"]
+	path = data
+	url = https://github.com/kbence12/babel_tower-data.git
