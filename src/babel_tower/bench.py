@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from sacrebleu.metrics.bleu import BLEU
 from sacrebleu.metrics.chrf import CHRF
 
+from babel_tower import punct
 from babel_tower.embed import pick_device
 from babel_tower.provenance import REPO_ROOT
 from babel_tower.records import Lang
@@ -125,6 +126,13 @@ class Translator:
         # the model is Any: transformers' annotations make mypy reject model.generate(...)
         self._loaded: tuple[PreTrainedTokenizerBase, Any] | None = None
 
+    @classmethod
+    def from_loaded(cls, name: str, tokenizer: PreTrainedTokenizerBase, model: Any, device: str) -> Translator:
+        """Wrap a model already in memory (e.g. during training) instead of loading one."""
+        translator = cls(name, device)
+        translator._loaded = tokenizer, model
+        return translator
+
     def settings(self) -> dict[str, Any]:
         return {"model": self.model_name, "device": self.device, "batch_size": self.batch_size,
                 "num_beams": self.num_beams, "max_new_tokens": self.max_new_tokens}  # fmt: skip
@@ -190,17 +198,29 @@ class Scores:
         )
 
 
-def evaluate(benchmark: Benchmark, direction: Direction, translator: Translator) -> dict[str, Any]:
-    """Translate a benchmark in one direction and score it; returns the full result record."""
+def evaluate(
+    benchmark: Benchmark, direction: Direction, translator: Translator, fix_punctuation: bool = False
+) -> dict[str, Any]:
+    """Translate a benchmark in one direction and score it; returns the full result record.
+
+    fix_punctuation maps characters the model's vocabulary lacks before translating, and restores
+    Hungarian dialogue dashes afterwards (see punct.py). References are never changed.
+    """
     src_lang, tgt_lang = languages(direction)
     sources, references = benchmark.side(src_lang), benchmark.side(tgt_lang)
-    hypotheses = translator.translate(sources)
+    if fix_punctuation:
+        hypotheses = translator.translate([punct.to_model(s) for s in sources])
+        if tgt_lang == "hu":
+            hypotheses = [punct.hungarian_output(h) for h in hypotheses]
+    else:
+        hypotheses = translator.translate(sources)
     result: dict[str, Any] = {
         "benchmark": benchmark.name,
         "direction": direction,
         "sentences": len(sources),
         "scores": _scores_dict(Scores.of(hypotheses, references, bootstrap=True)),
         "translator": translator.settings(),
+        "fix_punctuation": fix_punctuation,
     }
     if benchmark.sections:
         result["by_section"] = {

@@ -22,6 +22,7 @@ from babel_tower import bench, corpus, gold, jsonl, provenance, report, review
 from babel_tower.align import MAX_GROUP, AlignConfig, Alignment, align
 from babel_tower.embed import DEFAULT_MODEL, Embedder
 from babel_tower.epub import LfsPointerError, extract_paragraphs
+from babel_tower.finetune import cli as finetune_cli
 from babel_tower.records import LANGS, Lang, Pair, Paragraph, Sentence, Unaligned
 from babel_tower.splitter import split_paragraphs
 
@@ -146,14 +147,15 @@ def cmd_bench(args: argparse.Namespace) -> None:
     for direction in directions:
         src, tgt = bench.languages(direction)
         model = args.model.format(src=src, tgt=tgt)
-        label = (args.label or model.rstrip("/").rsplit("/", 1)[-1]).format(src=src, tgt=tgt)
+        default_label = model.rstrip("/").rsplit("/", 1)[-1] + ("+punct" if args.fix_punctuation else "")
+        label = (args.label or default_label).format(src=src, tgt=tgt)
         translator = bench.Translator(model, args.device, args.batch_size, args.beams)
         for b in benchmarks:
             print(f"=== {label}: {b.name} {direction} ({len(b.en)} sentences)")
             result = {
                 "label": label,
                 "created": datetime.now(UTC).isoformat(timespec="seconds"),
-                **bench.evaluate(b, direction, translator),
+                **bench.evaluate(b, direction, translator, args.fix_punctuation),
                 "code": provenance.code_info(),
                 "env": provenance.env_info(translator.device),
                 "timings": {"load_s": round(translator.load_s, 2), "translate_s": round(translator.translate_s, 2)},
@@ -239,6 +241,7 @@ def _parser() -> argparse.ArgumentParser:
 
     for add in (_add_pipeline_commands, _add_review_commands, _add_gold_commands, _add_bench_commands):
         add(command)
+    finetune_cli.add_parser(sub.add_parser("finetune", help="fine-tune a translation model on a corpus"))
     return parser
 
 
@@ -311,6 +314,10 @@ def _add_bench_commands(command: Command) -> None:
     p.add_argument("--device", help="cuda, mps or cpu (default: best available)")
     p.add_argument("--batch-size", type=int, default=32)
     p.add_argument("--beams", type=int, default=4, help="beam search width (default %(default)s)")
+    p.add_argument(
+        "--fix-punctuation", action="store_true",
+        help="map dashes and «» the model cannot tokenise, restore Hungarian dialogue dashes (punct.py)",
+    )  # fmt: skip
 
     p = command("corpus", cmd_corpus, "aligned pairs from one or more runs -> train/dev corpus for translation")
     p.add_argument("out", type=Path, help="corpus directory to write")
