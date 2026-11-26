@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 
 from babel_tower.align import Alignment
+from babel_tower.gold import Evaluation, Group, Sides, Window
 from babel_tower.records import LANGS, Pair, Paragraph, Sentence
 
 WIDTH = 100
@@ -154,3 +155,29 @@ def alignment(a: Alignment) -> None:
         side = [u for u in a.unaligned if u.side == lang]
         for u in rng.sample(side, min(4, len(side))):
             print(f"  [{lang}] {clip(u.text)}")
+
+
+def evaluation(ev: Evaluation, windows: Sequence[Window], sides: Sides, show: int) -> None:
+    n_en = sum(len(w.ids("en")) for w in windows)
+    n_hu = sum(len(w.ids("hu")) for w in windows)
+    print(f"gold: {len(windows)} windows, {n_en} EN / {n_hu} HU sentences")
+    print(f"{'':8} {'precision':>9} {'recall':>7} {'F1':>6}   correct / predicted / gold")
+    for name, s in (("links", ev.links), ("groups", ev.groups), ("skipped", ev.skipped)):
+        print(f"{name:8} {s.precision:9.1%} {s.recall:7.1%} {s.f1:6.1%}   {s.correct} / {s.predicted} / {s.gold}")
+    if not ev.missed or not show:
+        return
+    heading(f"{min(show, len(ev.missed))} of {len(ev.missed)} gold groups the run got wrong")
+    for number, g, predicted in ev.missed[:show]:
+        print(f"  window {number}  gold:")
+        _show_group(g, sides, "    ")
+        print("  run:" if predicted else "  run: (nothing)")
+        for p in predicted:
+            _show_group(p, sides, "    ")
+
+
+def _show_group(g: Group, sides: Sides, indent: str) -> None:
+    for lang, ids in zip(LANGS, (g.en, g.hu), strict=True):
+        for i in ids:
+            print(f"{indent}{lang.upper()} {i:5d} {clip(sides.text(lang, i), WIDTH - 12)}")
+    if not g.is_pair:
+        print(f"{indent}(no counterpart)")

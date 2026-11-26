@@ -14,6 +14,7 @@ into a parallel corpus of matched sentence groups. Most groups are 1-1 pairs, bu
 | `align.py` | Sentences → aligned groups, using a dynamic-programming aligner over those embeddings |
 | `records.py` | The `Paragraph` / `Sentence` / `Pair` / `Unaligned` records; each is one JSONL line |
 | `report.py`, `review.py` | Reports for checking each stage by eye; sampling pairs and diffing two runs |
+| `gold.py` | Hand-checked reference alignments, and scoring a run against them |
 | `provenance.py` | Input checksums, code commit and environment for `run.json` |
 | `cli.py` | The `babel-tower` command |
 
@@ -65,10 +66,33 @@ Each output line is one aligned group:
 
 Sentences left out of every group are written to `pairs.unaligned.jsonl`.
 
+## Measuring quality
+
+A gold file is a hand-corrected alignment of a few stretches of the book. `gold-template`
+pre-fills one from a run; fix it by moving lines between groups (the format is explained at the
+top of the file). Then score any run against it:
+
+```sh
+uv run babel-tower gold-template data/runs/book_skip06 data/gold/book.gold.txt   # then correct it by hand
+uv run babel-tower eval data/gold/book.gold.txt data/runs/book_skip06
+```
+
+`eval` reports precision, recall and F1 for three things, counting only sentences inside the gold windows:
+
+- **links**: (English sentence, Hungarian sentence) pairs that translate each other, so a group that is
+  nearly right still earns partial credit.
+- **groups**: aligned groups that match a gold group exactly.
+- **skipped**: sentences correctly left without a counterpart.
+
+It then prints the gold groups that the run got wrong, next to what the run did instead. Gold
+files refer to sentence ids, so they only fit runs made with the same sentence split: `eval`
+checks the texts, and refuses if they differ.
+
 ## Development
 
 ```sh
-uv run ruff check src      # lint
-uv run ruff format src     # format
-uv run mypy                # type-check (strict)
+uv run pytest                     # tests (synthetic text only)
+uv run ruff check src tests       # lint
+uv run ruff format src tests      # format
+uv run mypy                       # type-check (strict)
 ```

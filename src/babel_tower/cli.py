@@ -17,19 +17,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from babel_tower import jsonl, provenance, report, review
+from babel_tower import gold, jsonl, provenance, report, review
 from babel_tower.align import MAX_GROUP, AlignConfig, Alignment, align
 from babel_tower.embed import DEFAULT_MODEL, Embedder
 from babel_tower.epub import LfsPointerError, extract_paragraphs
-from babel_tower.records import LANGS, Lang, Pair, Paragraph, Sentence
+from babel_tower.records import LANGS, Lang, Pair, Paragraph, Sentence, Unaligned
 from babel_tower.splitter import split_paragraphs
+
+UNALIGNED = "pairs.unaligned.jsonl"  # next to pairs.jsonl in a run directory
 
 
 def main(argv: list[str] | None = None) -> None:
     args = _parser().parse_args(argv)
     try:
         args.command(args)
-    except LfsPointerError as e:
+    except (LfsPointerError, gold.GoldFormatError) as e:
         sys.exit(f"error: {e}")
 
 
@@ -106,6 +108,35 @@ def cmd_compare(args: argparse.Namespace) -> None:
     review.compare(jsonl.read(args.a, Pair), jsonl.read(args.b, Pair), args.n, args.seed)
 
 
+def cmd_gold_template(args: argparse.Namespace) -> None:
+    run_dir: Path = args.run
+    if args.out.exists() and not args.force:
+        sys.exit(f"error: {args.out} exists; it may hold corrections. Pass --force to overwrite it.")
+    groups = gold.path_groups(jsonl.read(run_dir / "pairs.jsonl", Pair), jsonl.read(run_dir / UNALIGNED, Unaligned))
+    windows = gold.pick_windows(groups, args.windows, args.size, args.seed)
+    gold.write_template(args.out, windows, _sides(run_dir))
+    n_en = sum(len(g.en) for w in windows for g in w)
+    n_hu = sum(len(g.hu) for w in windows for g in w)
+    print(f"wrote {args.out}: {len(windows)} windows, {n_en} EN and {n_hu} HU sentences to check")
+
+
+def cmd_eval(args: argparse.Namespace) -> None:
+    run_dir: Path = args.run
+    windows = gold.parse(args.gold)
+    if problems := gold.check_texts(windows, _sides(run_dir)):
+        print("\n".join(problems[:10]))
+        sys.exit(
+            f"error: {len(problems)} gold sentences differ from {run_dir}: "
+            "the gold file was made from a run with a different sentence split"
+        )
+    groups = gold.path_groups(jsonl.read(run_dir / "pairs.jsonl", Pair), jsonl.read(run_dir / UNALIGNED, Unaligned))
+    report.evaluation(gold.evaluate(windows, groups), windows, _sides(run_dir), show=args.show)
+
+
+def _sides(run_dir: Path) -> gold.Sides:
+    return gold.Sides.of(*(jsonl.read(run_dir / f"{lang}.sentences.jsonl", Sentence) for lang in LANGS))
+
+
 def _write_alignment(pairs_path: Path, result: Alignment) -> None:
     jsonl.write(pairs_path, result.pairs)
     jsonl.write(pairs_path.with_suffix(".unaligned.jsonl"), result.unaligned)
@@ -165,6 +196,19 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("b", type=Path)
     p.add_argument("-n", type=int, default=8)
     p.add_argument("--seed", type=int, default=0)
+
+    p = command("gold-template", cmd_gold_template, "pre-fill a gold alignment file from a run, to correct by hand")
+    p.add_argument("run", type=Path, help="run directory (from `babel-tower run`)")
+    p.add_argument("out", type=Path, help="gold file to write")
+    p.add_argument("--windows", type=int, default=6, help="stretches of the book to check (default %(default)s)")
+    p.add_argument("--size", type=int, default=25, help="English sentences per window (default %(default)s)")
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--force", action="store_true", help="overwrite an existing gold file")
+
+    p = command("eval", cmd_eval, "score a run against a gold alignment file")
+    p.add_argument("gold", type=Path)
+    p.add_argument("run", type=Path, help="run directory (from `babel-tower run`)")
+    p.add_argument("--show", type=int, default=10, help="gold groups the run got wrong to print (default %(default)s)")
     return parser
 
 
