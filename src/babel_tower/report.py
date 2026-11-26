@@ -164,15 +164,17 @@ def evaluation(ev: Evaluation, windows: Sequence[Window], sides: Sides, show: in
     print(f"{'':8} {'precision':>9} {'recall':>7} {'F1':>6}   correct / predicted / gold")
     for name, s in (("links", ev.links), ("groups", ev.groups), ("skipped", ev.skipped)):
         print(f"{name:8} {s.precision:9.1%} {s.recall:7.1%} {s.f1:6.1%}   {s.correct} / {s.predicted} / {s.gold}")
-    if not ev.missed or not show:
+    if not ev.disagreements or not show:
         return
-    heading(f"{min(show, len(ev.missed))} of {len(ev.missed)} gold groups the run got wrong")
-    for number, g, predicted in ev.missed[:show]:
-        print(f"  window {number}  gold:")
-        _show_group(g, sides, "    ")
-        print("  run:" if predicted else "  run: (nothing)")
-        for p in predicted:
-            _show_group(p, sides, "    ")
+    heading(f"{min(show, len(ev.disagreements))} of {len(ev.disagreements)} places where the run differs from gold")
+    for d in ev.disagreements[:show]:
+        for label, groups in (("gold", d.gold), ("run", d.run)):
+            print(f"  window {d.window} {label}:" if label == "gold" else f"  {label}:")
+            for k, g in enumerate(groups):
+                if k:
+                    print("      ·")
+                _show_group(g, sides, "    ")
+        print()
 
 
 def _show_group(g: Group, sides: Sides, indent: str) -> None:
@@ -180,4 +182,26 @@ def _show_group(g: Group, sides: Sides, indent: str) -> None:
         for i in ids:
             print(f"{indent}{lang.upper()} {i:5d} {clip(sides.text(lang, i), WIDTH - 12)}")
     if not g.is_pair:
-        print(f"{indent}(no counterpart)")
+        print(f"{indent}           (no counterpart)")
+
+
+def bench_result(result: dict[str, Any]) -> None:
+    s = result["scores"]
+    t = result["timings"]
+    print(f"chrF++ {s['chrf++']:.1f}   BLEU {s['bleu']:.1f}   (translated in {t['translate_s']:.1f}s)")
+    for section, chrf in result.get("by_section", {}).items():
+        print(f"  {section:36} chrF++ {chrf:5.1f}")
+    rng = random.Random(0)
+    heading("4 random translations")
+    for row in rng.sample(result["translations"], min(4, len(result["translations"]))):
+        print(f"  SRC {clip(row['source'])}\n  REF {clip(row['reference'])}\n  OUT {clip(row['hypothesis'])}\n")
+
+
+def results_table(rows: Sequence[dict[str, Any]]) -> None:
+    rows = sorted(rows, key=lambda r: (r["benchmark"], r["direction"], -r["scores"]["chrf++"]))
+    print(f"{'benchmark':16} {'direction':9} {'model':32} {'chrF++':>7} {'BLEU':>6} {'n':>5}")
+    for r in rows:
+        print(
+            f"{r['benchmark']:16} {r['direction']:9} {r['label']:32} "
+            f"{r['scores']['chrf++']:7.1f} {r['scores']['bleu']:6.1f} {r['sentences']:5d}"
+        )

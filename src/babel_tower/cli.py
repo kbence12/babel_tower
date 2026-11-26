@@ -12,12 +12,13 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from babel_tower import gold, jsonl, provenance, report, review
+from babel_tower import bench, gold, jsonl, provenance, report, review
 from babel_tower.align import MAX_GROUP, AlignConfig, Alignment, align
 from babel_tower.embed import DEFAULT_MODEL, Embedder
 from babel_tower.epub import LfsPointerError, extract_paragraphs
@@ -31,7 +32,7 @@ def main(argv: list[str] | None = None) -> None:
     args = _parser().parse_args(argv)
     try:
         args.command(args)
-    except (LfsPointerError, gold.GoldFormatError) as e:
+    except (LfsPointerError, gold.GoldFormatError, bench.BenchmarkUnavailableError) as e:
         sys.exit(f"error: {e}")
 
 
@@ -130,7 +131,42 @@ def cmd_eval(args: argparse.Namespace) -> None:
             "the gold file was made from a run with a different sentence split"
         )
     groups = gold.path_groups(jsonl.read(run_dir / "pairs.jsonl", Pair), jsonl.read(run_dir / UNALIGNED, Unaligned))
+    if missing := gold.missing_lines(windows, groups):
+        listed = ", ".join(f"window {w} {lang.upper()} {i}" for w, lang, i in missing)
+        print(
+            f"warning: {len(missing)} sentences inside gold windows are missing from the file and not scored: {listed}"
+        )
+        print("         (to mark a sentence as having no counterpart, keep its line as a group of its own)")
     report.evaluation(gold.evaluate(windows, groups), windows, _sides(run_dir), show=args.show)
+
+
+def cmd_bench(args: argparse.Namespace) -> None:
+    directions = bench.DIRECTIONS if args.direction == "both" else (args.direction,)
+    benchmarks = [bench.load(name) for name in args.benchmarks]
+    for direction in directions:
+        src, tgt = bench.languages(direction)
+        model = args.model.format(src=src, tgt=tgt)
+        label = (args.label or model.rstrip("/").rsplit("/", 1)[-1]).format(src=src, tgt=tgt)
+        translator = bench.Translator(model, args.device, args.batch_size, args.beams)
+        for b in benchmarks:
+            print(f"=== {label}: {b.name} {direction} ({len(b.en)} sentences)")
+            result = {
+                "label": label,
+                "created": datetime.now(UTC).isoformat(timespec="seconds"),
+                **bench.evaluate(b, direction, translator),
+                "code": provenance.code_info(),
+                "env": provenance.env_info(translator.device),
+                "timings": {"load_s": round(translator.load_s, 2), "translate_s": round(translator.translate_s, 2)},
+            }
+            path = args.out / f"{label}.{b.name}.{direction}.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+            report.bench_result(result)
+
+
+def cmd_results(args: argparse.Namespace) -> None:
+    rows = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(args.dir.glob("*.json"))]
+    report.results_table(rows)
 
 
 def _sides(run_dir: Path) -> gold.Sides:
@@ -150,17 +186,26 @@ def _embedder(args: argparse.Namespace) -> Embedder:
     return Embedder(args.model, args.device, args.batch_size)
 
 
+type Command = Callable[[str, Callable[[argparse.Namespace], None], str], argparse.ArgumentParser]
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="babel-tower", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     sub = parser.add_subparsers(required=True, metavar="COMMAND")
 
-    def command(name: str, fn: Any, help: str) -> argparse.ArgumentParser:  # noqa: A002
+    def command(name: str, fn: Callable[[argparse.Namespace], None], help: str) -> argparse.ArgumentParser:  # noqa: A002
         p = sub.add_parser(name, help=help, description=help)
         p.set_defaults(command=fn)
         return p
 
+    for add in (_add_pipeline_commands, _add_review_commands, _add_gold_commands, _add_bench_commands):
+        add(command)
+    return parser
+
+
+def _add_pipeline_commands(command: Command) -> None:
     p = command("run", cmd_run, "EPUBs -> paragraphs -> sentences -> aligned pairs, into one directory")
     p.add_argument("en", type=Path, help="English EPUB")
     p.add_argument("hu", type=Path, help="Hungarian EPUB")
@@ -183,6 +228,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("out", type=Path, help="output pairs JSONL")
     _add_align_options(p)
 
+
+def _add_review_commands(command: Command) -> None:
     p = command("sample", cmd_sample, "show random pairs in a similarity range or of one group type")
     p.add_argument("pairs", type=Path)
     p.add_argument("--lo", type=float, default=0.0)
@@ -197,6 +244,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("-n", type=int, default=8)
     p.add_argument("--seed", type=int, default=0)
 
+
+def _add_gold_commands(command: Command) -> None:
     p = command("gold-template", cmd_gold_template, "pre-fill a gold alignment file from a run, to correct by hand")
     p.add_argument("run", type=Path, help="run directory (from `babel-tower run`)")
     p.add_argument("out", type=Path, help="gold file to write")
@@ -209,7 +258,25 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("gold", type=Path)
     p.add_argument("run", type=Path, help="run directory (from `babel-tower run`)")
     p.add_argument("--show", type=int, default=10, help="gold groups the run got wrong to print (default %(default)s)")
-    return parser
+
+
+def _add_bench_commands(command: Command) -> None:
+    p = command("bench", cmd_bench, "translate benchmark sets with a model and score the output")
+    p.add_argument(
+        "model",
+        help="Hugging Face model id or local directory; {src} and {tgt} are filled in per direction, "
+        "e.g. Helsinki-NLP/opus-mt-{src}-{tgt}",
+    )
+    p.add_argument("--direction", choices=[*bench.DIRECTIONS, "both"], default="both")
+    p.add_argument("--benchmarks", nargs="+", choices=bench.BENCHMARKS, default=["literary", "flores-devtest"])
+    p.add_argument("--label", help="name for this model in result files (default: last part of the model id)")
+    p.add_argument("--out", type=Path, default=Path("data/results"), help="results directory (default %(default)s)")
+    p.add_argument("--device", help="cuda, mps or cpu (default: best available)")
+    p.add_argument("--batch-size", type=int, default=32)
+    p.add_argument("--beams", type=int, default=4, help="beam search width (default %(default)s)")
+
+    p = command("results", cmd_results, "table of all benchmark results in a directory")
+    p.add_argument("dir", type=Path, nargs="?", default=Path("data/results"))
 
 
 def _add_align_options(p: argparse.ArgumentParser) -> None:

@@ -9,6 +9,7 @@ from babel_tower.gold import (
     Sides,
     check_texts,
     evaluate,
+    missing_lines,
     parse,
     path_groups,
     pick_windows,
@@ -79,10 +80,35 @@ def test_evaluate(tmp_path: Path) -> None:
     assert (ev.groups.correct, ev.groups.predicted, ev.groups.gold) == (2, 4, 3)
     assert (ev.skipped.correct, ev.skipped.predicted, ev.skipped.gold) == (0, 0, 1)
     assert ev.skipped.precision == 1.0
-    assert [g for _, g, _ in ev.missed] == [Group((1,), (1, 2)), Group((2,), ())]
+    assert [(d.gold, d.run) for d in ev.disagreements] == [
+        ([Group((1,), (1, 2)), Group((2,), ())], [Group((1,), (1,)), Group((2,), (2,))]),
+    ]
+
+
+def test_missing_lines_are_reported(tmp_path: Path) -> None:
+    path = tmp_path / "gold.txt"
+    path.write_text("=== window 1\nEN 0 | a\nHU 0 | a\n---\nEN 2 | c\nHU 2 | c\n")
+    predicted = [Group((0,), (0,)), Group((1,), (1,)), Group((2,), (2,))]
+    assert missing_lines(parse(path), predicted) == [(1, "en", 1), (1, "hu", 1)]
+
+
+def test_multi_line_skip_group_means_each_line_has_no_counterpart(tmp_path: Path) -> None:
+    path = tmp_path / "gold.txt"
+    path.write_text("=== window 1\nEN 0 | a\nHU 0 | a\n---\nHU 1 | b\nHU 2 | c\n")
+    ev = evaluate(parse(path), [Group((0,), (0,)), Group((), (1,)), Group((), (2,))])
+    assert ev.disagreements == []
+    assert ev.skipped.f1 == 1.0
 
 
 def test_jsonl_round_trip(tmp_path: Path) -> None:
     rows = [pair(0, [1, 2], [3]), pair(1, [4], [5])]
     jsonl.write(tmp_path / "pairs.jsonl", rows)
     assert jsonl.read(tmp_path / "pairs.jsonl", Pair) == rows
+
+
+def test_line_deleted_at_the_window_edge_is_found_through_the_header_extent(tmp_path: Path) -> None:
+    path = tmp_path / "gold.txt"
+    write_template(path, [[Group((0,), (0,)), Group((1,), (1,))]], SIDES)
+    assert path.read_text().count("=== window 1 | EN 0-1 | HU 0-1") == 1
+    path.write_text(path.read_text().replace("HU 1 | hu 1.\n", ""))
+    assert missing_lines(parse(path), [Group((0,), (0,)), Group((1,), (1,))]) == [(1, "hu", 1)]

@@ -1,0 +1,625 @@
+# babel-tower literary benchmark, v1
+#
+# 200 short English sentences in the style of fiction, each with a Hungarian translation.
+# Written from scratch for this project (not taken from any book), so it can be used to test
+# a translator trained on book pairs without overlapping its training data.
+# Hungarian dialogue follows Hungarian conventions (– dashes instead of quotes).
+#
+# Format: an "EN:" line followed by its "HU:" line. "##" lines name a section; other "#"
+# lines and blank lines are ignored. Use it as a test set only, not for tuning.
+
+## narration
+
+EN: The train was late again.
+HU: A vonat megint késett.
+
+EN: Anna closed the window and sat down.
+HU: Anna becsukta az ablakot, és leült.
+
+EN: It had been raining since morning.
+HU: Reggel óta esett az eső.
+
+EN: The old man lived alone at the edge of the village.
+HU: Az öregember egyedül élt a falu szélén.
+
+EN: Nobody noticed when the lights went out.
+HU: Senki sem vette észre, amikor kialudtak a fények.
+
+EN: Tom put the letter back in his pocket.
+HU: Tom visszatette a levelet a zsebébe.
+
+EN: The kitchen smelled of fresh bread.
+HU: A konyhában friss kenyér illata terjengett.
+
+EN: She waited for an hour, but he never came.
+HU: Egy órát várt, de a fiú nem jött el.
+
+EN: The dog barked twice and then fell silent.
+HU: A kutya kétszer ugatott, aztán elhallgatott.
+
+EN: They walked home in silence.
+HU: Szótlanul sétáltak haza.
+
+EN: The door was locked from the inside.
+HU: Az ajtó belülről volt bezárva.
+
+EN: Lili found a key under the doormat.
+HU: Lili talált egy kulcsot a lábtörlő alatt.
+
+EN: The house had not been painted for years.
+HU: A házat évek óta nem festették ki.
+
+EN: He forgot his umbrella on the bus.
+HU: Az esernyőjét a buszon felejtette.
+
+EN: The children were already asleep when their father got home.
+HU: A gyerekek már aludtak, amikor az apjuk hazaért.
+
+EN: The snow kept falling all night.
+HU: Egész éjjel hullott a hó.
+
+EN: Max knocked on the door, but nobody answered.
+HU: Max kopogott az ajtón, de senki sem felelt.
+
+EN: The shop on the corner closed last winter.
+HU: A sarki bolt tavaly télen bezárt.
+
+EN: She read the message three times before she understood it.
+HU: Háromszor is elolvasta az üzenetet, mire megértette.
+
+EN: The road was empty and the fields were white with frost.
+HU: Az út üres volt, a mezőket fehérre festette a dér.
+
+EN: Grandmother kept her glasses on a string around her neck.
+HU: Nagymama zsinóron hordta a nyakában a szemüvegét.
+
+EN: The boat drifted slowly towards the shore.
+HU: A csónak lassan sodródott a part felé.
+
+EN: Emma had never seen the sea before.
+HU: Emma még sosem látta a tengert.
+
+EN: The clock in the hall struck midnight.
+HU: Az előszobában az óra éjfélt ütött.
+
+EN: Leo spent the whole afternoon fixing his bicycle.
+HU: Leo egész délután a biciklijét javította.
+
+## narration, longer sentences
+
+EN: When she finally reached the station, the last train had already left.
+HU: Mire végre odaért az állomásra, az utolsó vonat már elment.
+
+EN: Although he was tired, he could not fall asleep.
+HU: Bár fáradt volt, nem tudott elaludni.
+
+EN: The letter, which had arrived that morning, lay unopened on the table.
+HU: A levél, amely aznap reggel érkezett, felbontatlanul hevert az asztalon.
+
+EN: If it had not been for the dog, nobody would have found the boy.
+HU: Ha nincs a kutya, senki sem találta volna meg a fiút.
+
+EN: She told him everything, except the one thing that mattered.
+HU: Mindent elmondott neki, kivéve azt az egyet, ami igazán számított.
+
+EN: The longer they waited, the colder it became.
+HU: Minél tovább vártak, annál hidegebb lett.
+
+EN: He had promised himself that he would never go back to that house.
+HU: Megfogadta magának, hogy soha többé nem megy vissza abba a házba.
+
+EN: By the time the doctor arrived, the fever had gone down.
+HU: Mire az orvos megérkezett, a láz már lement.
+
+EN: Tom pretended to read, but he was listening to every word.
+HU: Tom úgy tett, mintha olvasna, de minden szóra figyelt.
+
+EN: It was the kind of morning when everything seems possible.
+HU: Olyan reggel volt, amikor minden lehetségesnek tűnik.
+
+EN: Nobody knew where the money had come from, and nobody asked.
+HU: Senki sem tudta, honnan jött a pénz, és senki sem kérdezte.
+
+EN: She had lived in the city for ten years without ever visiting the museum.
+HU: Tíz éve élt a városban, de egyszer sem látogatott el a múzeumba.
+
+EN: As soon as the rain stopped, the children ran out into the garden.
+HU: Amint elállt az eső, a gyerekek kiszaladtak a kertbe.
+
+EN: He walked faster, hoping that no one would recognise him.
+HU: Gyorsabban ment, abban a reményben, hogy senki sem ismeri fel.
+
+EN: The village, which had seemed so large to her as a child, now looked small and grey.
+HU: A falu, amely gyerekkorában olyan nagynak tűnt, most kicsinek és szürkének látszott.
+
+EN: Whatever happened, she was determined not to cry.
+HU: Bármi történjék is, elhatározta, hogy nem fog sírni.
+
+EN: They had been friends for so long that neither of them remembered how it had started.
+HU: Olyan régóta voltak barátok, hogy egyikük sem emlékezett, hogyan kezdődött.
+
+EN: The more he explained, the less she understood.
+HU: Minél többet magyarázott, a lány annál kevésbé értette.
+
+EN: Lili was sure she had left the book on the shelf, but it was not there.
+HU: Lili biztos volt benne, hogy a polcon hagyta a könyvet, de nem volt ott.
+
+EN: Because the bridge had been washed away, they had to go the long way round.
+HU: Mivel a hidat elsodorta az ár, kerülőúton kellett menniük.
+
+EN: He opened the box carefully, as if he were afraid that something would bite him.
+HU: Óvatosan nyitotta ki a dobozt, mintha attól tartana, hogy valami megharapja.
+
+EN: Before she could say anything, the door slammed shut.
+HU: Mielőtt bármit mondhatott volna, az ajtó becsapódott.
+
+EN: Even though the café was full, the old woman found a seat by the window.
+HU: Bár a kávézó tele volt, az idős asszony talált egy helyet az ablak mellett.
+
+EN: What surprised him most was not the noise, but the silence that followed.
+HU: Nem is a zaj lepte meg leginkább, hanem az utána következő csend.
+
+EN: It was only years later that she understood why her mother had cried that day.
+HU: Csak évekkel később értette meg, miért sírt aznap az anyja.
+
+## dialogue
+
+EN: "Come here," said Anna.
+HU: – Gyere ide – mondta Anna.
+
+EN: "I'm not hungry," Tom said quietly.
+HU: – Nem vagyok éhes – mondta Tom halkan.
+
+EN: "Where have you been?" asked his mother.
+HU: – Hol voltál? – kérdezte az anyja.
+
+EN: "Don't touch that!" shouted Max.
+HU: – Ne nyúlj hozzá! – kiáltotta Max.
+
+EN: "I think it's going to rain," said Grandfather, looking at the sky.
+HU: – Azt hiszem, esni fog – mondta Nagyapa, és az égre nézett.
+
+EN: "We could go tomorrow," Emma suggested.
+HU: – Mehetnénk holnap is – javasolta Emma.
+
+EN: "Is anybody there?" she called.
+HU: – Van ott valaki? – kiáltotta.
+
+EN: "Of course I remember," he said. "How could I forget?"
+HU: – Persze, hogy emlékszem – mondta. – Hogy is felejthetném el?
+
+EN: "It wasn't me," said Leo. "I was in the garden the whole time."
+HU: – Nem én voltam – mondta Leo. – Egész végig a kertben voltam.
+
+EN: "Thank you," she whispered.
+HU: – Köszönöm – suttogta.
+
+EN: "Hurry up, or we'll miss the bus!"
+HU: – Siess, különben lekéssük a buszt!
+
+EN: "What time is it?" "Almost seven."
+HU: – Hány óra van? – Mindjárt hét.
+
+EN: "I don't know what you mean," said Lili, although she knew perfectly well.
+HU: – Nem tudom, mire gondolsz – mondta Lili, pedig nagyon is jól tudta.
+
+EN: "Be careful," said the old woman. "The stairs are slippery."
+HU: – Vigyázz – mondta az idős asszony. – Csúszik a lépcső.
+
+EN: "Can I come with you?" asked the little girl.
+HU: – Mehetek veled? – kérdezte a kislány.
+
+EN: "No," said Father firmly. "Not today."
+HU: – Nem – mondta Apa határozottan. – Ma nem.
+
+EN: "Look!" cried Emma. "The ice is melting!"
+HU: – Nézd! – kiáltott fel Emma. – Olvad a jég!
+
+EN: "I'm sorry," said Tom. "I didn't mean to break it."
+HU: – Sajnálom – mondta Tom. – Nem akartam eltörni.
+
+EN: "Who told you that?" she asked sharply.
+HU: – Ki mondta ezt neked? – kérdezte élesen.
+
+EN: "Nobody," he said, and looked away.
+HU: – Senki – felelte, és elfordította a fejét.
+
+EN: "Shall I make some tea?" asked Grandmother.
+HU: – Főzzek egy kis teát? – kérdezte Nagymama.
+
+EN: "That's the silliest thing I've ever heard," said Max, laughing.
+HU: – Ez a legbutább dolog, amit valaha hallottam – mondta Max nevetve.
+
+EN: "Wait for me!" called Leo, running after them.
+HU: – Várjatok meg! – kiáltotta Leo, és utánuk futott.
+
+EN: "You're late," said the teacher. "Again."
+HU: – Elkéstél – mondta a tanító. – Megint.
+
+EN: "I'll be back before dark," she promised.
+HU: – Sötétedés előtt visszajövök – ígérte.
+
+EN: "Do you really think so?" asked Anna doubtfully.
+HU: – Tényleg így gondolod? – kérdezte Anna kételkedve.
+
+EN: "Well," said Grandfather slowly, "that depends."
+HU: – Nos – mondta Nagyapa lassan –, az attól függ.
+
+EN: "Go to sleep," said Mother. "It's very late."
+HU: – Aludj már – mondta Anya. – Nagyon késő van.
+
+EN: "Is it far?" "Not very. Just over the hill."
+HU: – Messze van? – Nem nagyon. Csak a dombon túl.
+
+EN: "I have an idea," said Lili suddenly.
+HU: – Van egy ötletem – mondta Lili hirtelen.
+
+EN: "What kind of idea?" asked Tom suspiciously.
+HU: – Miféle ötlet? – kérdezte Tom gyanakodva.
+
+EN: "Stop it, both of you!" said Father.
+HU: – Hagyjátok abba, mindketten! – szólt rájuk Apa.
+
+EN: "I can't find my shoes," wailed the boy.
+HU: – Nem találom a cipőmet – jajgatott a fiú.
+
+EN: "They're under your bed," said his sister without looking up.
+HU: – Az ágyad alatt van – mondta a nővére, fel sem nézve.
+
+EN: "Are you afraid?" he asked. "A little," she admitted.
+HU: – Félsz? – kérdezte. – Egy kicsit – vallotta be a lány.
+
+EN: "Good morning," said the postman cheerfully.
+HU: – Jó reggelt! – köszönt vidáman a postás.
+
+EN: "It's a secret," whispered Emma. "Promise you won't tell anyone."
+HU: – Ez titok – suttogta Emma. – Ígérd meg, hogy senkinek sem mondod el.
+
+EN: "I promise," said Max solemnly.
+HU: – Megígérem – mondta Max ünnepélyesen.
+
+EN: "Why not?" asked Leo. "Because I said so," answered his mother.
+HU: – Miért nem? – kérdezte Leo. – Mert én azt mondtam – felelte az anyja.
+
+EN: "There you are!" said Anna. "I've been looking for you everywhere."
+HU: – Hát itt vagy! – mondta Anna. – Mindenhol kerestelek.
+
+## questions and short replies
+
+EN: How long have you lived here?
+HU: Mióta laksz itt?
+
+EN: Have you seen my keys anywhere?
+HU: Nem láttad valahol a kulcsaimat?
+
+EN: Why didn't you tell me earlier?
+HU: Miért nem szóltál korábban?
+
+EN: What would you do if you were me?
+HU: Mit tennél a helyemben?
+
+EN: Which way is the station?
+HU: Merre van az állomás?
+
+EN: Yes, of course.
+HU: Igen, persze.
+
+EN: I'm not sure.
+HU: Nem vagyok benne biztos.
+
+EN: Not yet.
+HU: Még nem.
+
+EN: Maybe tomorrow.
+HU: Talán holnap.
+
+EN: Who left the door open?
+HU: Ki hagyta nyitva az ajtót?
+
+EN: Is this seat taken?
+HU: Foglalt ez a hely?
+
+EN: How much does it cost?
+HU: Mennyibe kerül?
+
+EN: Can you help me carry this?
+HU: Segítenél ezt cipelni?
+
+EN: What happened to your arm?
+HU: Mi történt a karoddal?
+
+EN: Do you want to come in?
+HU: Bejössz?
+
+EN: Where did you put the scissors?
+HU: Hová tetted az ollót?
+
+EN: Are you coming or not?
+HU: Jössz vagy nem?
+
+EN: What are you laughing at?
+HU: Min nevetsz?
+
+EN: Did you sleep well?
+HU: Jól aludtál?
+
+EN: Not at all.
+HU: Egyáltalán nem.
+
+EN: How did you know?
+HU: Honnan tudtad?
+
+EN: Whose coat is this?
+HU: Kié ez a kabát?
+
+EN: When does the shop open?
+HU: Mikor nyit a bolt?
+
+EN: I suppose so.
+HU: Gondolom, igen.
+
+EN: Why is everyone so quiet?
+HU: Miért van mindenki ilyen csendben?
+
+## idioms
+
+EN: It's raining cats and dogs.
+HU: Dézsából ömlik az eső.
+
+EN: She was over the moon when she heard the news.
+HU: Madarat lehetett volna vele fogatni, amikor meghallotta a hírt.
+
+EN: Don't put all your eggs in one basket.
+HU: Ne tegyél fel mindent egy lapra.
+
+EN: He finally let the cat out of the bag.
+HU: Végül kikotyogta a titkot.
+
+EN: It's not my cup of tea.
+HU: Ez nem az én világom.
+
+EN: We are in the same boat.
+HU: Egy cipőben járunk.
+
+EN: Break a leg!
+HU: Kéz- és lábtörést!
+
+EN: She has a heart of gold.
+HU: Aranyból van a szíve.
+
+EN: Better late than never.
+HU: Jobb későn, mint soha.
+
+EN: He could talk the hind legs off a donkey.
+HU: Be nem áll a szája.
+
+EN: Every cloud has a silver lining.
+HU: Minden rosszban van valami jó.
+
+EN: I'm all ears.
+HU: Csupa fül vagyok.
+
+EN: That was a piece of cake.
+HU: Ez gyerekjáték volt.
+
+EN: He kept his cool.
+HU: Megőrizte a hidegvérét.
+
+EN: Actions speak louder than words.
+HU: A tettek többet mondanak a szavaknál.
+
+EN: She bit off more than she could chew.
+HU: Nagyobb fába vágta a fejszéjét.
+
+EN: The early bird catches the worm.
+HU: Ki korán kel, aranyat lel.
+
+EN: My hands were tied.
+HU: Meg volt kötve a kezem.
+
+EN: He was as quiet as a mouse.
+HU: Olyan csendben volt, mint egy kisegér.
+
+EN: Time flies when you're having fun.
+HU: Jó társaságban gyorsan repül az idő.
+
+## descriptions
+
+EN: The sky was grey and heavy with snow.
+HU: Az ég szürke volt, és hóval terhes.
+
+EN: A thin mist hung over the river.
+HU: Vékony köd ült a folyó felett.
+
+EN: The room was small, but warm and bright.
+HU: A szoba kicsi volt, de meleg és világos.
+
+EN: Her voice was soft and a little sad.
+HU: A hangja halk volt, és egy kicsit szomorú.
+
+EN: The streets were full of people hurrying home.
+HU: Az utcák tele voltak hazafelé siető emberekkel.
+
+EN: The garden was overgrown with weeds.
+HU: A kertet benőtte a gaz.
+
+EN: He had a round face and very blue eyes.
+HU: Kerek arca és nagyon kék szeme volt.
+
+EN: The water was so clear that you could see the stones at the bottom.
+HU: A víz olyan tiszta volt, hogy látni lehetett a köveket a fenekén.
+
+EN: It was a hot, still afternoon in August.
+HU: Forró, szélcsendes augusztusi délután volt.
+
+EN: The wind howled around the house all night.
+HU: Egész éjjel üvöltött a szél a ház körül.
+
+EN: Anna felt lonely in the big, empty flat.
+HU: Anna magányosnak érezte magát a nagy, üres lakásban.
+
+EN: The bread was still warm from the oven.
+HU: A kenyér még meleg volt, frissen jött ki a sütőből.
+
+EN: Leaves of red and gold covered the path.
+HU: Piros és arany levelek borították az ösvényt.
+
+EN: The old piano was out of tune.
+HU: A régi zongora el volt hangolódva.
+
+EN: Tom was nervous, and his hands were shaking.
+HU: Tom ideges volt, és remegett a keze.
+
+EN: The cellar was dark and smelled of damp earth.
+HU: A pince sötét volt, és nyirkos föld szaga terjengett benne.
+
+EN: The moon was full and very bright.
+HU: Telihold volt, nagyon fényes.
+
+EN: She was proud of her brother, though she would never have said so.
+HU: Büszke volt a bátyjára, bár sosem mondta volna ki.
+
+EN: The town was quiet on Sunday mornings.
+HU: Vasárnap reggelente csendes volt a város.
+
+EN: The soup was too salty, but nobody complained.
+HU: A leves túl sós volt, de senki sem panaszkodott.
+
+EN: The little shop sold everything from nails to newspapers.
+HU: A kis bolt a szögtől az újságig mindent árult.
+
+EN: He felt as if a heavy weight had been lifted from his shoulders.
+HU: Úgy érezte, mintha nagy kő esett volna le a szívéről.
+
+EN: The beach was empty except for a few seagulls.
+HU: A strand üres volt, csak néhány sirály járkált rajta.
+
+EN: Max was the tallest boy in his class.
+HU: Max volt a legmagasabb fiú az osztályában.
+
+EN: The kitchen was a mess after the party.
+HU: A buli után nagy rendetlenség volt a konyhában.
+
+## time and numbers
+
+EN: The meeting starts at half past nine.
+HU: A megbeszélés fél tízkor kezdődik.
+
+EN: We stayed there for three weeks.
+HU: Három hétig maradtunk ott.
+
+EN: She was born on the fourth of July, 1998.
+HU: 1998. július negyedikén született.
+
+EN: It takes about twenty minutes to walk to school.
+HU: Gyalog körülbelül húsz perc az iskola.
+
+EN: The ticket cost twelve pounds.
+HU: A jegy tizenkét fontba került.
+
+EN: He is two years older than his sister.
+HU: Két évvel idősebb a húgánál.
+
+EN: The river is more than a hundred metres wide.
+HU: A folyó több mint száz méter széles.
+
+EN: I'll call you in a quarter of an hour.
+HU: Negyedóra múlva felhívlak.
+
+EN: They arrived on Tuesday evening.
+HU: Kedd este érkeztek.
+
+EN: The baby is six months old.
+HU: A kisbaba hat hónapos.
+
+EN: Half of the apples were rotten.
+HU: Az almák fele rohadt volt.
+
+EN: Lili read the book twice in one week.
+HU: Lili egy hét alatt kétszer is elolvasta a könyvet.
+
+EN: The train leaves at ten to eight.
+HU: A vonat hét óra ötvenkor indul.
+
+EN: Grandfather turned eighty last spring.
+HU: Nagyapa tavaly tavasszal töltötte be a nyolcvanat.
+
+EN: There were at least fifty people in the room.
+HU: Legalább ötvenen voltak a teremben.
+
+## fairy tales and children's stories
+
+EN: Once upon a time there was a little girl who lived by the sea.
+HU: Hol volt, hol nem volt, volt egyszer egy kislány, aki a tenger mellett lakott.
+
+EN: The little mouse was very brave for its size.
+HU: A kisegér a méretéhez képest nagyon bátor volt.
+
+EN: "Who is knocking at my door?" asked the old goat.
+HU: – Ki kopogtat az ajtómon? – kérdezte a vén kecske.
+
+EN: The fox smiled, but his eyes were not friendly.
+HU: A róka mosolygott, de a szeme nem volt barátságos.
+
+EN: Every evening the moon came to the window to say goodnight.
+HU: A hold minden este odajött az ablakhoz, hogy jó éjszakát kívánjon.
+
+EN: The tortoise walked slowly, but he never stopped.
+HU: A teknős lassan ment, de sosem állt meg.
+
+EN: "I'm the strongest animal in the world!" boasted the lion.
+HU: – Én vagyok a világ legerősebb állata! – kérkedett az oroszlán.
+
+EN: The little boat was afraid of the big waves.
+HU: A kis csónak félt a nagy hullámoktól.
+
+EN: The king had three daughters, and the youngest was the cleverest.
+HU: A királynak három lánya volt, és a legkisebb volt a legokosabb.
+
+EN: The dragon had not eaten anything for a hundred years.
+HU: A sárkány száz éve nem evett semmit.
+
+EN: "Let's go on an adventure!" said the little duck.
+HU: – Induljunk kalandra! – mondta a kiskacsa.
+
+EN: The snowman was sad when the sun came out.
+HU: A hóember elszomorodott, amikor kisütött a nap.
+
+EN: The cat sat on the roof and watched the stars.
+HU: A macska a tetőn ült, és nézte a csillagokat.
+
+EN: "Thank you for helping me," said the frog. "Now I will help you."
+HU: – Köszönöm, hogy segítettél – mondta a béka. – Most én segítek neked.
+
+EN: And they lived happily ever after.
+HU: És boldogan éltek, amíg meg nem haltak.
+
+EN: The wind carried the kite higher and higher.
+HU: A szél egyre magasabbra vitte a papírsárkányt.
+
+EN: The little star wanted to see what the earth looked like.
+HU: A kis csillag látni akarta, milyen a Föld.
+
+EN: The mouse and the elephant became the best of friends.
+HU: Az egér és az elefánt a legjobb barátok lettek.
+
+EN: Nobody in the village had ever seen such a big pumpkin.
+HU: A faluban még senki sem látott ilyen nagy tököt.
+
+EN: "That is not fair!" cried the youngest son.
+HU: – Ez nem igazság! – kiáltotta a legkisebb fiú.
+
+EN: The magic spoon could make any soup delicious.
+HU: A varázskanál bármilyen levest finommá tudott varázsolni.
+
+EN: At night, the toys in the shop window came to life.
+HU: Éjszaka a kirakatban a játékok életre keltek.
+
+EN: The hedgehog rolled himself into a prickly ball.
+HU: A sün szúrós gombóccá gömbölyödött.
+
+EN: The little train puffed up the steep hill.
+HU: A kis vonat pöfögve kapaszkodott fel a meredek dombra.
+
+EN: "Goodnight," said the bat, although it was morning.
+HU: – Jó éjszakát – mondta a denevér, pedig reggel volt.

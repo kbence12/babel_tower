@@ -88,6 +88,27 @@ It then prints the gold groups that the run got wrong, next to what the run did 
 files refer to sentence ids, so they only fit runs made with the same sentence split: `eval`
 checks the texts, and refuses if they differ.
 
+## Translation benchmarks
+
+The aligned pairs are training data for an English ↔ Hungarian translator. Benchmarks are kept
+separate from the books, so models trained on them can be tested fairly:
+
+| Benchmark | Contents |
+|---|---|
+| `literary` | 200 fiction-style sentences in 8 sections (narration, dialogue, idioms, ...) written for this project: [`benchmarks/literary.txt`](benchmarks/literary.txt) |
+| `flores-dev`, `flores-devtest` | [FLORES+](https://huggingface.co/datasets/openlanguagedata/flores_plus), the standard general-domain test set. Gated: accept its terms on Hugging Face and log in with `hf auth login`. It is downloaded to the Hugging Face cache, never into this repo. |
+
+```sh
+uv run babel-tower bench 'Helsinki-NLP/opus-mt-{src}-{tgt}'   # both directions; {src}/{tgt} filled in
+uv run babel-tower results                                      # table of every result so far
+```
+
+Scores are chrF++ (the main metric: character n-grams give partial credit for a word with
+the right stem and the wrong suffix, which matters for Hungarian) and BLEU, from sacrebleu.
+Each result in `data/results/` keeps every translation, per-section scores, sacrebleu
+signatures, generation settings and the code version. Scores are not directly comparable across
+directions, since EN→HU is scored on Hungarian text and HU→EN on English.
+
 ## Development
 
 ```sh
