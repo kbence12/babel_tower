@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Align two sentence files (English, Hungarian) with LaBSE embeddings and a small DP aligner.
 
-Usage:
-    pip install sentence-transformers numpy
-    python align.py data/interim/pooh_en.sentences.jsonl data/interim/pooh_hu.sentences.jsonl \
-        data/aligned/pooh.pairs.jsonl
+Usage (normally run through `babel-tower run`, which chains all steps):
+    uv run python -m babel_tower.align cache/en.sentences.jsonl cache/hu.sentences.jsonl out/pairs.jsonl
 
 How it works:
   1. Drop verse blocks and segments with no letters/digits (--keep-verse keeps verse).
@@ -28,6 +26,7 @@ import hashlib
 import json
 import random
 import re
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -44,51 +43,88 @@ def embed_view(text):
     return re.sub(r"\s+", " ", DROP_CHARS.sub(" ", text)).strip()
 
 
-def load_segments(path, keep_verse):
-    segs = []
+def read_jsonl(path):
     with open(path, encoding="utf-8") as f:
-        for line in f:
-            o = json.loads(line)
-            if o["verse"] and not keep_verse:
-                continue
-            o["view"] = embed_view(o["text"])
-            if not any(ch.isalnum() for ch in o["view"]):
-                continue
-            segs.append(o)
+        return [json.loads(line) for line in f]
+
+
+def write_jsonl(path, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+
+def prepare_segments(rows, keep_verse):
+    segs = []
+    for o in rows:
+        if o["verse"] and not keep_verse:
+            continue
+        o = {**o, "view": embed_view(o["text"])}
+        if not any(ch.isalnum() for ch in o["view"]):
+            continue
+        segs.append(o)
     return segs
 
 
 def pick_device():
     import torch
 
-    if torch.backends.mps.is_available():
-        return "mps"
     if torch.cuda.is_available():
         return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
     return "cpu"
 
 
-def embed_windows(views, tag, cache_dir, model_name):
+class Embedder:
+    """Loads the model lazily (only on a cache miss) and keeps timing stats."""
+
+    def __init__(self, model_name, device=None, batch_size=64):
+        self.model_name, self.batch_size = model_name, batch_size
+        self.device = device or pick_device()
+        self.model = None
+        self.stats = {"device": self.device, "batch_size": batch_size, "load_s": 0.0,
+                      "encode_s": 0.0, "texts_encoded": 0, "cache_hits": 0, "cache_misses": 0}
+
+    def encode(self, texts):
+        if self.model is None:
+            from sentence_transformers import SentenceTransformer
+
+            t = time.perf_counter()
+            self.model = SentenceTransformer(self.model_name, device=self.device)
+            self.stats["load_s"] += time.perf_counter() - t
+        t = time.perf_counter()
+        emb = self.model.encode(
+            texts, batch_size=self.batch_size, normalize_embeddings=True,
+            convert_to_numpy=True, show_progress_bar=True,
+        ).astype(np.float32)
+        if self.device == "cuda":
+            import torch
+
+            torch.cuda.synchronize()
+            self.stats["gpu_peak_mem_mb"] = round(torch.cuda.max_memory_allocated() / 2**20)
+        self.stats["encode_s"] += time.perf_counter() - t
+        self.stats["texts_encoded"] += len(texts)
+        return emb
+
+
+def embed_windows(views, tag, cache_dir, embedder):
     """Embed every window of 1..K consecutive segments. Returns {n: array[N-n+1, dim]}."""
-    out, model = {}, None
+    out = {}
     for n in range(1, K + 1):
         texts = [" ".join(views[i : i + n]) for i in range(len(views) - n + 1)]
         if not texts:
             out[n] = np.zeros((0, 1), dtype=np.float32)
             continue
-        key = hashlib.sha1(("\n".join(texts) + model_name).encode("utf-8")).hexdigest()[:12]
+        key = hashlib.sha1(("\n".join(texts) + embedder.model_name).encode("utf-8")).hexdigest()[:12]
         path = cache_dir / f"{tag}_n{n}_{key}.npy"
         if path.exists():
             out[n] = np.load(path)
+            embedder.stats["cache_hits"] += 1
             continue
-        if model is None:
-            from sentence_transformers import SentenceTransformer
-
-            model = SentenceTransformer(model_name, device=pick_device())
-        emb = model.encode(
-            texts, batch_size=64, normalize_embeddings=True,
-            convert_to_numpy=True, show_progress_bar=True,
-        ).astype(np.float32)
+        embedder.stats["cache_misses"] += 1
+        emb = embedder.encode(texts)
         cache_dir.mkdir(parents=True, exist_ok=True)
         np.save(path, emb)
         out[n] = emb
@@ -153,6 +189,25 @@ def show(p):
     print(f"     HU {clip(p['hu'])}")
 
 
+def stats(pairs, unaligned, N, M):
+    """Headline numbers for a run (also written to run.json)."""
+    sims = np.array([p["sim"] for p in pairs]) if pairs else np.zeros(0)
+    out = {
+        "segments": {"en": N, "hu": M},
+        "pairs": len(pairs),
+        "types": dict(sorted(Counter(p["type"] for p in pairs).items())),
+        "coverage": {"en": round(sum(len(p["en_ids"]) for p in pairs) / max(N, 1), 4),
+                     "hu": round(sum(len(p["hu_ids"]) for p in pairs) / max(M, 1), 4)},
+        "unaligned": {side: sum(u["side"] == side for u in unaligned) for side in ("en", "hu")},
+    }
+    if len(sims):
+        q = np.percentile(sims, [10, 25, 50, 75])
+        out["sim"] = {"p10": round(q[0], 4), "p25": round(q[1], 4), "median": round(q[2], 4),
+                      "p75": round(q[3], 4), "mean": round(float(sims.mean()), 4),
+                      "below_0.6": int((sims < 0.6).sum()), "below_0.7": int((sims < 0.7).sum())}
+    return out
+
+
 def summarize(pairs, unaligned, N, M):
     types = Counter(p["type"] for p in pairs)
     sims = np.array([p["sim"] for p in pairs])
@@ -188,27 +243,22 @@ def summarize(pairs, unaligned, N, M):
             print(f"  [{side}] {clip(u['text'])}")
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("en", type=Path, help="English sentences JSONL")
-    ap.add_argument("hu", type=Path, help="Hungarian sentences JSONL")
-    ap.add_argument("out", type=Path, help="output pairs JSONL")
-    ap.add_argument("--skip-cost", type=float, default=0.5)
-    ap.add_argument("--group-penalty", type=float, default=0.1,
-                    help="extra cost per segment beyond a 1-1 pair; raise if 2-2 / 1-3 groups dominate")
-    ap.add_argument("--keep-verse", action="store_true")
-    ap.add_argument("--model", default="sentence-transformers/LaBSE")
-    ap.add_argument("--cache", type=Path, default=Path("data/cache"))
-    args = ap.parse_args()
-
-    en = load_segments(args.en, args.keep_verse)
-    hu = load_segments(args.hu, args.keep_verse)
+def align(en_rows, hu_rows, skip_cost=0.5, group_penalty=0.1, keep_verse=False,
+          cache_dir=Path("data/cache"), embedder=None):
+    """Align two lists of sentence rows. Returns (pairs, unaligned, N, M, timings)."""
+    embedder = embedder or Embedder("sentence-transformers/LaBSE")
+    en = prepare_segments(en_rows, keep_verse)
+    hu = prepare_segments(hu_rows, keep_verse)
     N, M = len(en), len(hu)
     print(f"loaded EN {N} / HU {M} segments")
 
-    Een = embed_windows([s["view"] for s in en], "en", args.cache, args.model)
-    Ehu = embed_windows([s["view"] for s in hu], "hu", args.cache, args.model)
-    steps = dp_align(Een, Ehu, N, M, args.skip_cost, args.group_penalty)
+    t = time.perf_counter()
+    Een = embed_windows([s["view"] for s in en], "en", cache_dir, embedder)
+    Ehu = embed_windows([s["view"] for s in hu], "hu", cache_dir, embedder)
+    t_embed = time.perf_counter() - t
+    t = time.perf_counter()
+    steps = dp_align(Een, Ehu, N, M, skip_cost, group_penalty)
+    t_dp = time.perf_counter() - t
 
     pairs, unaligned = [], []
     for a, n, b, m in steps:
@@ -227,16 +277,40 @@ def main():
                 unaligned.append({"side": "en", "id": en[a + t]["id"], "text": en[a + t]["text"]})
             for t in range(m):
                 unaligned.append({"side": "hu", "id": hu[b + t]["id"], "text": hu[b + t]["text"]})
+    return pairs, unaligned, N, M, {"embed_s": round(t_embed, 3), "dp_s": round(t_dp, 3)}
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    with args.out.open("w", encoding="utf-8") as f:
-        for p in pairs:
-            f.write(json.dumps(p, ensure_ascii=False) + "\n")
-    un_path = args.out.with_suffix(".unaligned.jsonl")
-    with un_path.open("w", encoding="utf-8") as f:
-        for u in unaligned:
-            f.write(json.dumps(u, ensure_ascii=False) + "\n")
 
+def unaligned_path(out):
+    return out.with_suffix(".unaligned.jsonl")
+
+
+def add_args(ap):
+    """Alignment options, shared with the `babel-tower run` command."""
+    ap.add_argument("--skip-cost", type=float, default=0.5,
+                    help="cost per unaligned segment; pairs with cosine below ~this are left out")
+    ap.add_argument("--group-penalty", type=float, default=0.1,
+                    help="extra cost per segment beyond a 1-1 pair; raise if 2-2 / 1-3 groups dominate")
+    ap.add_argument("--keep-verse", action="store_true")
+    ap.add_argument("--model", default="sentence-transformers/LaBSE")
+    ap.add_argument("--device", default=None, help="cuda / mps / cpu (default: best available)")
+    ap.add_argument("--batch-size", type=int, default=64)
+    ap.add_argument("--cache", type=Path, default=Path("data/cache"), help="embedding cache directory")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("en", type=Path, help="English sentences JSONL")
+    ap.add_argument("hu", type=Path, help="Hungarian sentences JSONL")
+    ap.add_argument("out", type=Path, help="output pairs JSONL")
+    add_args(ap)
+    args = ap.parse_args()
+
+    embedder = Embedder(args.model, args.device, args.batch_size)
+    pairs, unaligned, N, M, _ = align(
+        read_jsonl(args.en), read_jsonl(args.hu), args.skip_cost, args.group_penalty,
+        args.keep_verse, args.cache, embedder)
+    write_jsonl(args.out, pairs)
+    write_jsonl(unaligned_path(args.out), unaligned)
     summarize(pairs, unaligned, N, M)
 
 

@@ -1,7 +1,7 @@
 [project]
 name = "babel-tower"
 version = "0.1.0"
-description = "Add your description here"
+description = "Eng->Hun translation hobby project. This is for my education, not for actual perf."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-babel-tower = "babel_tower:main"
+babel-tower = "babel_tower.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]

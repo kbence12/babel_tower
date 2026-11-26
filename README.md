@@ -28,16 +28,29 @@ parameters are fast.
 
 ## Usage
 
-Requires Python 3.14 and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.14, [uv](https://docs.astral.sh/uv/) and [Git LFS](https://git-lfs.com/) (the
+EPUBs in the `data` submodule are stored in LFS).
 
 ```sh
+git submodule update --init && (cd data && git lfs install && git lfs pull)
 uv sync
-uv run python src/babel_tower/extract_epub.py en.epub cache/en.paragraphs.jsonl
-uv run python src/babel_tower/splitter.py cache/en.paragraphs.jsonl cache/en.sentences.jsonl --lang en
-# …same two steps for the Hungarian EPUB with --lang hu…
-uv run python src/babel_tower/align.py cache/en.sentences.jsonl cache/hu.sentences.jsonl out/pairs.jsonl
-uv run python src/babel_tower/inspect_pairs.py sample out/pairs.jsonl --lo 0.5 --hi 0.6
+uv run babel-tower run data/eng/book.epub data/hun/book.epub data/runs/book_skip06 --skip-cost 0.6
+uv run python -m babel_tower.inspect_pairs sample data/runs/book_skip06/pairs.jsonl --lo 0.5 --hi 0.6
 ```
+
+`babel-tower run` writes everything for one run into the output directory:
+
+| File | Contents |
+|---|---|
+| `{en,hu}.paragraphs.jsonl` | extracted paragraphs |
+| `{en,hu}.sentences.jsonl` | split sentences (the ids that pairs refer to) |
+| `pairs.jsonl` | aligned groups |
+| `pairs.unaligned.jsonl` | sentences left out of every group |
+| `run.json` | input checksums, settings, code commit, library versions, device, timings, summary stats |
+
+Embedding uses CUDA, then MPS, then CPU, whichever is available first (override with `--device`). Embeddings are cached in
+`data/cache/`, so reruns with other `--skip-cost` / `--group-penalty` values skip the model entirely.
+Each step can also run on its own, e.g. `uv run python -m babel_tower.splitter --help`.
 
 Each output line is one aligned group:
 

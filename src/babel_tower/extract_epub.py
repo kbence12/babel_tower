@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """Extract paragraphs from an EPUB, in reading order, into JSONL.
 
-Usage:
-    python extract_epub.py data/raw/pooh_en.epub data/interim/pooh_en.paragraphs.jsonl
-
-Dependencies:
-    pip install ebooklib beautifulsoup4 lxml
+Usage (normally run through `babel-tower run`, which chains all steps):
+    uv run python -m babel_tower.extract_epub book.epub cache/en.paragraphs.jsonl
 
 One JSON object per block-level element:
     i        global paragraph index
@@ -49,7 +46,11 @@ def clean(raw):
 
 
 def extract(path):
-    book = epub.read_epub(str(path), options={"ignore_ncx": True})
+    with open(path, "rb") as f:
+        if f.read(40).startswith(b"version https://git-lfs"):
+            raise SystemExit(f"{path} is a Git LFS pointer, not the EPUB itself. "
+                             "Install git-lfs, then run `git lfs install && git lfs pull` inside data/.")
+    book =epub.read_epub(str(path), options={"ignore_ncx": True})
     rows = []
     for doc_idx, (idref, _linear) in enumerate(book.spine):
         item = book.get_item_with_id(idref)
@@ -95,6 +96,14 @@ def trim_gutenberg(rows):
     return rows
 
 
+def extract_paragraphs(path):
+    """EPUB -> list of paragraph rows with a global index `i`."""
+    rows = trim_gutenberg(extract(path))
+    for i, r in enumerate(rows):
+        r["i"] = i
+    return rows
+
+
 def report(rows):
     words = sum(len(r["text"].split()) for r in rows)
     verse = sum(1 for r in rows if r["n_lines"] > 1)
@@ -118,9 +127,7 @@ def main():
     ap.add_argument("out", type=Path)
     args = ap.parse_args()
 
-    rows = trim_gutenberg(extract(args.epub))
-    for i, r in enumerate(rows):
-        r["i"] = i
+    rows = extract_paragraphs(args.epub)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8") as f:

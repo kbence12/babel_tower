@@ -2,12 +2,12 @@
 """Look at alignment output without reading everything.
 
 Sample pairs in a similarity range (e.g. to judge where the quality cut-off should be):
-    python inspect_pairs.py sample data/aligned/pooh.pairs.jsonl --lo 0.5 --hi 0.6 -n 12
-    python inspect_pairs.py sample data/aligned/pooh.pairs.jsonl --type 2-2 -n 12
+    uv run python -m babel_tower.inspect_pairs sample runs/a/pairs.jsonl --lo 0.5 --hi 0.6 -n 12
+    uv run python -m babel_tower.inspect_pairs sample runs/a/pairs.jsonl --type 2-2 -n 12
 
 Compare two alignment runs (e.g. different --group-penalty or --skip-cost) and show only
 the pairs that differ:
-    python inspect_pairs.py compare data/aligned/pooh.pairs.jsonl data/aligned/pooh_gp02.pairs.jsonl -n 8
+    uv run python -m babel_tower.inspect_pairs compare runs/a/pairs.jsonl runs/b/pairs.jsonl -n 8
 """
 import argparse
 import json

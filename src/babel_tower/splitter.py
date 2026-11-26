@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """Split paragraph JSONL (from extract_epub.py) into sentence JSONL.
 
-Usage:
-    python split_sentences.py data/interim/pooh_en.paragraphs.jsonl data/interim/pooh_en.sentences.jsonl --lang en
-    python split_sentences.py data/interim/pooh_hu.paragraphs.jsonl data/interim/pooh_hu.sentences.jsonl --lang hu
+Usage (normally run through `babel-tower run`, which chains all steps):
+    uv run python -m babel_tower.splitter cache/en.paragraphs.jsonl cache/en.sentences.jsonl --lang en
+    uv run python -m babel_tower.splitter cache/hu.paragraphs.jsonl cache/hu.sentences.jsonl --lang hu
 
 Rule-based and dependency-free, so it is easy to read and debug. A boundary is a
 .!? or … (plus any closing quotes) followed by whitespace, unless:
   - the next real character (skipping opening quotes, brackets and dashes) is lowercase.
     This is what keeps Hungarian speech tags together:  – Hogy vagy? – kérdezte Róbert.
   - the punctuation is a single "." after a known abbreviation (Mr., dr., pl., ...)
-  - the punctuation is a single "." after an initial (A. A. Milne; roman numeral I.)
+  - the punctuation is a single "." after an initial (J. R. Smith; roman numeral I.)
 
 Headings and multi-line blocks (verse) are passed through unsplit and flagged.
 
 Known weak spots (look for them in the report):
-  - speech tag starting with a capitalised name after ! or ?:  "Oh, bother!" Pooh said.
+  - speech tag starting with a capitalised name after ! or ?:  "Oh, no!" Anna said.
   - abbreviations missing from ABBREV
   - English pronoun "I" at the end of a sentence is handled, but "I." as a roman numeral
     in English text is not (headings are not split, so this rarely matters)
@@ -90,6 +90,23 @@ def split_sentences(text, lang):
     return merged
 
 
+def split_rows(rows, lang):
+    """Paragraph rows -> sentence rows. Headings and verse are kept whole and flagged."""
+    out = []
+    for r in rows:
+        verse = r["n_lines"] > 1
+        if r["tag"].startswith("h") or verse:
+            parts = [r["text"]]
+        else:
+            parts = split_sentences(r["text"], lang)
+        for k, t in enumerate(parts):
+            out.append(
+                {"id": len(out), "para": r["i"], "s": k, "doc": r["doc"],
+                 "tag": r["tag"], "verse": verse, "text": t}
+            )
+    return out
+
+
 def report(out):
     n = len(out)
     lens = sorted(len(o["text"].split()) for o in out)
@@ -136,18 +153,7 @@ def main():
     with args.inp.open(encoding="utf-8") as f:
         rows = [json.loads(line) for line in f]
 
-    out = []
-    for r in rows:
-        verse = r["n_lines"] > 1
-        if r["tag"].startswith("h") or verse:
-            parts = [r["text"]]
-        else:
-            parts = split_sentences(r["text"], args.lang)
-        for k, t in enumerate(parts):
-            out.append(
-                {"id": len(out), "para": r["i"], "s": k, "doc": r["doc"],
-                 "tag": r["tag"], "verse": verse, "text": t}
-            )
+    out = split_rows(rows, args.lang)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8") as f:
